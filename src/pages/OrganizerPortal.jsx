@@ -31,7 +31,11 @@ export default function OrganizerPortal() {
   const loadCamps = async () => {
     try {
       const data = await getDonationCamps();
-      setCamps(data);
+      // Filter to show only upcoming camps (today or future)
+      const today = new Date().toISOString().split('T')[0];
+      const upcoming = data.filter(camp => camp.date >= today)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+      setCamps(upcoming);
     } catch (error) {
       console.error("Error loading camps:", error);
     }
@@ -161,7 +165,7 @@ export default function OrganizerPortal() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Start Time (24h)</label>
                     <div className="relative">
                       <input
                         type="time"
@@ -174,7 +178,7 @@ export default function OrganizerPortal() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">End Time (24h)</label>
                     <div className="relative">
                       <input
                         type="time"
