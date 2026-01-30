@@ -17,6 +17,7 @@ export default function ProfileSettings() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [isDonor, setIsDonor] = useState(false);
+    const [userRole, setUserRole] = useState('user'); // Default to user
 
     // Donor specific fields
     const [phone, setPhone] = useState('');
@@ -35,6 +36,7 @@ export default function ProfileSettings() {
                         setName(data.name || currentUser.displayName || '');
                         setEmail(data.email || currentUser.email || '');
                         setIsDonor(data.isDonor || false);
+                        setUserRole(data.role || 'user');
 
                         if (data.donorProfile) {
                             setPhone(data.donorProfile.phone || '');
@@ -231,20 +233,24 @@ export default function ProfileSettings() {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="bg-red-50 rounded-xl p-6 text-center border border-red-100 mt-6">
-                                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm">
-                                        <Heart className="h-6 w-6 text-red-500" />
+                                // ONLY show "Become a Donor" if the user is a standard 'user'
+                                // Hospitals and Organizers should NOT see this.
+                                userRole === 'user' && (
+                                    <div className="bg-red-50 rounded-xl p-6 text-center border border-red-100 mt-6">
+                                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm">
+                                            <Heart className="h-6 w-6 text-red-500" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-slate-900">Become a Donor</h3>
+                                        <p className="text-slate-600 mb-4 text-sm">You haven't registered as a donor yet. Join our community and save lives.</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate('/dashboard')}
+                                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold text-sm transition-colors shadow-sm"
+                                        >
+                                            Register as Donor
+                                        </button>
                                     </div>
-                                    <h3 className="text-lg font-bold text-slate-900">Become a Donor</h3>
-                                    <p className="text-slate-600 mb-4 text-sm">You haven't registered as a donor yet. Join our community and save lives.</p>
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate('/dashboard')}
-                                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold text-sm transition-colors shadow-sm"
-                                    >
-                                        Register as Donor
-                                    </button>
-                                </div>
+                                )
                             )}
 
                             <div className="pt-6 flex justify-end">
