@@ -63,14 +63,15 @@ export default function HospitalDashboard() {
         </div>
 
         <h2 className="text-xl font-bold text-slate-900 mb-6">Manage Blood Stock</h2>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {Object.entries(inventory.bloodStock).map(([type, count]) => (
-            <StockCard 
-              key={type} 
-              type={type} 
-              count={count} 
-              onUpdate={handleUpdateStock} 
+          {/* Ensure stable sorting order: A+, A-, B+, B-, AB+, AB-, O+, O- */}
+          {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((type) => (
+            <StockCard
+              key={type}
+              type={type}
+              count={inventory.bloodStock[type] || 0}
+              onUpdate={handleUpdateStock}
             />
           ))}
         </div>
@@ -89,7 +90,7 @@ function StockCard({ type, count, onUpdate }) {
         <span className="text-xl font-bold text-red-600">{type}</span>
         <Droplet className="absolute -top-1 -right-1 h-6 w-6 text-red-500 fill-red-500" />
       </div>
-      
+
       <div className="text-center mb-6">
         <span className="text-4xl font-bold text-slate-900">{count}</span>
         <p className={`text-xs font-medium mt-1 ${isLow ? 'text-red-500' : 'text-slate-400'}`}>
@@ -98,14 +99,14 @@ function StockCard({ type, count, onUpdate }) {
       </div>
 
       <div className="flex items-center gap-4 w-full">
-        <button 
+        <button
           onClick={() => onUpdate(type, -1)}
           disabled={count <= 0}
           className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg flex items-center justify-center disabled:opacity-50"
         >
           <Minus className="h-4 w-4" />
         </button>
-        <button 
+        <button
           onClick={() => onUpdate(type, 1)}
           className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center shadow-md shadow-blue-200"
         >
