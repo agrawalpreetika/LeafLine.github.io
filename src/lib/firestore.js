@@ -464,6 +464,20 @@ export const getDonationCamps = async () => {
   }
 };
 
+export const getOrganizerCamps = async (organizerId) => {
+  try {
+    const q = query(
+      collection(db, 'donationCamps'),
+      where('organizerId', '==', organizerId)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error("Error getting organizer camps:", error);
+    throw error;
+  }
+};
+
 export const deleteOldCamps = async () => {
     try {
         const today = new Date();
@@ -587,4 +601,104 @@ export const getVenues = async () => {
     console.error("Error getting venues:", error);
     throw error;
   }
+};
+
+export const getVenueAppointments = async (venueId) => {
+  try {
+    const q = query(
+      collection(db, 'appointments'),
+      where('venueId', '==', venueId),
+      where('status', 'in', ['scheduled', 'completed', 'no-show'])
+    );
+    const snapshot = await getDocs(q);
+    const appointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Sort by Date then Time
+    return appointments.sort((a, b) => {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        if (dateA - dateB !== 0) return dateA - dateB;
+        
+        // Time sort helper
+        const timeToNum = (t) => {
+            if (t === '10:00 AM') return 1;
+            if (t === '01:00 PM') return 2;
+            if (t === '04:00 PM') return 3;
+            return 4;
+        };
+        return timeToNum(a.timeSlot) - timeToNum(b.timeSlot);
+    });
+  } catch (error) {
+    console.error("Error getting venue appointments:", error);
+    throw error;
+  }
+};
+
+export const completeAppointment = async (appointmentId, venueId, bloodType, donorId, venueName, venueType) => {
+    try {
+        // 1. Update Appointment Status
+        const apptRef = doc(db, 'appointments', appointmentId);
+        await updateDoc(apptRef, {
+            status: 'completed',
+            completedAt: new Date().toISOString()
+        });
+
+        // 2. Increment Hospital Stock (Only if venue is a hospital)
+        // If it's a camp, we might not update a specific stock immediately or logic differs.
+        // Assuming for now both might want to track, but stock is specifically for 'inventory' collection.
+        // We'll check if an inventory doc exists for this venueId.
+        if (venueType === 'hospital') {
+            const inventoryRef = doc(db, 'inventory', venueId);
+            const docSnap = await getDoc(inventoryRef);
+            if (docSnap.exists()) {
+                const currentStock = docSnap.data().bloodStock || {};
+                const currentAmount = currentStock[bloodType] || 0;
+                await updateDoc(inventoryRef, {
+                    [`bloodStock.${bloodType}`]: currentAmount + 1,
+                    lastUpdated: new Date().toISOString()
+                });
+            }
+        }
+
+        // 3. Update Donor History
+        const userRef = doc(db, 'users', donorId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+            const userData = userSnap.data();
+            const currentHistory = userData.donationHistory || [];
+            const newHistoryItem = {
+                date: new Date().toISOString(),
+                venueName,
+                venueType,
+                bloodType,
+                status: 'Success'
+            };
+            
+            // Also update stats
+            const currentTotal = userData.donorProfile?.totalDonations || 0;
+            
+            await updateDoc(userRef, {
+                donationHistory: [...currentHistory, newHistoryItem],
+                'donorProfile.totalDonations': currentTotal + 1,
+                'donorProfile.lastDonation': new Date().toISOString()
+            });
+        }
+
+    } catch (error) {
+        console.error("Error completing appointment:", error);
+        throw error;
+    }
+};
+
+export const markAppointmentNoShow = async (appointmentId) => {
+    try {
+        const apptRef = doc(db, 'appointments', appointmentId);
+        await updateDoc(apptRef, {
+            status: 'no-show',
+            updatedAt: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error("Error marking no-show:", error);
+        throw error;
+    }
 };

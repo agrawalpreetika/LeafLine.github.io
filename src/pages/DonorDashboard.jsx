@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Calendar, Droplet, Clock, ChevronRight, AlertCircle, Plus, CheckCircle, Lock, MessageCircle, MapPin, X } from 'lucide-react';
+import { User, Calendar, Droplet, Clock, ChevronRight, AlertCircle, Plus, CheckCircle, Lock, MessageCircle, MapPin, X, Award, BadgeCheck, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   getUserProfile,
@@ -39,6 +39,10 @@ export default function DonorDashboard() {
     timeSlot: ''
   });
   const [isBooking, setIsBooking] = useState(false);
+
+  // Certificate Modal State
+  const [showCertificateModal, setShowCertificateModal] = useState(false);
+  const [certificateData, setCertificateData] = useState(null);
 
   // Form state
   const [bloodType, setBloodType] = useState('');
@@ -280,7 +284,7 @@ export default function DonorDashboard() {
           <div className="bg-white rounded-2xl w-full max-w-lg p-6 relative animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowAppointmentModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 z-10"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 z-20"
             >
               <X className="h-6 w-6" />
             </button>
@@ -431,6 +435,16 @@ export default function DonorDashboard() {
         />
       )}
 
+      {/* Certificate Modal */}
+      {showCertificateModal && certificateData && (
+        <CertificateModal
+          donorName={profile.name}
+          venueName={certificateData.venueName}
+          date={certificateData.date}
+          onClose={() => setShowCertificateModal(false)}
+        />
+      )}
+
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
@@ -475,46 +489,11 @@ export default function DonorDashboard() {
         </div>
 
         {/* Upcoming Appointments Section */}
-        {profile?.isDonor && upcomingAppointments.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-brand-500" />
-              My Upcoming Appointments
-            </h2>
-            <div className="grid md:grid-cols-2 gap-4">
-              {upcomingAppointments.map(appt => (
-                <div key={appt.id} className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${appt.status === 'scheduled' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                        }`}>
-                        {appt.status.toUpperCase()}
-                      </span>
-                      <span className="text-slate-500 text-sm flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {new Date(appt.date).toLocaleDateString()} @ {appt.timeSlot}
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-lg text-slate-900">
-                      {appt.venueName}
-                    </h3>
-                    <p className="text-sm text-slate-500 flex items-center gap-1 mt-1">
-                      <MapPin className="h-3 w-3" /> {appt.venueType === 'hospital' ? 'Hospital Visit' : 'Donation Camp'}
-                    </p>
-                  </div>
-
-                  {appt.status === 'scheduled' && (
-                    <button
-                      onClick={() => handleCancelAppointment(appt.id)}
-                      className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+        {profile?.isDonor && (
+          <MyAppointmentSection
+            upcomingAppointments={upcomingAppointments}
+            handleCancelAppointment={handleCancelAppointment}
+          />
         )}
 
         {/* Blood Requests Section */}
@@ -661,19 +640,150 @@ export default function DonorDashboard() {
               />
             </div>
 
-            {/* Donation History Placeholder */}
+            {/* Donation History */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
               <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center">
                 <h2 className="text-lg font-bold text-slate-900">Donation History</h2>
               </div>
-              <div className="p-8 text-center text-slate-500">
-                <AlertCircle className="h-10 w-10 mx-auto mb-3 text-slate-300" />
-                <p>No donation history yet. Schedule your first donation today!</p>
-              </div>
+
+              {profile.donationHistory && profile.donationHistory.length > 0 ? (
+                <div className="divide-y divide-slate-100">
+                  {[...profile.donationHistory]
+                    .sort((a, b) => new Date(b.date) - new Date(a.date))
+                    .map((history, index) => (
+                      <div key={index} className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-start gap-4">
+                          <div className="bg-emerald-100 p-3 rounded-full text-emerald-600">
+                            <CheckCircle className="h-6 w-6" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-slate-900 text-lg">{history.venueName}</h4>
+                            <p className="text-sm text-slate-500 flex items-center gap-1 mt-1">
+                              <Calendar className="h-3.5 w-3.5" />
+                              {new Date(history.date).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="px-3 py-1 rounded-full bg-red-100 text-red-700 font-bold text-sm border border-red-200">
+                            Blood Type: {history.bloodType}
+                          </span>
+                          <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 font-bold text-sm">
+                            Success
+                          </span>
+                          <button
+                            onClick={() => {
+                              setCertificateData(history);
+                              setShowCertificateModal(true);
+                            }}
+                            className="p-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                            title="View Certificate"
+                          >
+                            <Award className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-slate-500">
+                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Droplet className="h-8 w-8 text-slate-300" />
+                  </div>
+                  <p className="font-medium text-slate-600">Your hero journey starts here!</p>
+                  <p className="text-sm mt-1">Complete a donation to see your history.</p>
+                </div>
+              )}
             </div>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function MyAppointmentSection({ upcomingAppointments, handleCancelAppointment }) {
+  const [activeTab, setActiveTab] = useState('upcoming'); // 'upcoming' or 'cancelled'
+
+  // Filter logic
+  const displayedAppointments = upcomingAppointments.filter(appt => {
+    if (activeTab === 'upcoming') {
+      return appt.status === 'scheduled';
+    } else {
+      return appt.status === 'cancelled' || appt.status === 'no-show';
+    }
+  });
+
+  if (upcomingAppointments.length === 0) return null;
+
+  return (
+    <div className="mb-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+          <Calendar className="h-5 w-5 text-brand-500" />
+          My Appointments
+        </h2>
+
+        {/* Tabs */}
+        <div className="flex bg-slate-100 p-1 rounded-xl">
+          <button
+            onClick={() => setActiveTab('upcoming')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'upcoming' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+          >
+            Upcoming
+          </button>
+          <button
+            onClick={() => setActiveTab('cancelled')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'cancelled' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+          >
+            Cancelled / Missed
+          </button>
+        </div>
+      </div>
+
+      {displayedAppointments.length === 0 ? (
+        <div className="bg-white rounded-xl p-8 border border-dashed border-slate-200 text-center">
+          <p className="text-slate-500 font-medium">No {activeTab} appointments found.</p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-4">
+          {displayedAppointments.map(appt => (
+            <div key={appt.id} className={`bg-white rounded-xl p-5 shadow-sm border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${appt.status === 'cancelled' || appt.status === 'no-show' ? 'border-red-100 opacity-80' : 'border-slate-100'
+              }`}>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${appt.status === 'scheduled' ? 'bg-green-100 text-green-700' :
+                    appt.status === 'cancelled' ? 'bg-red-100 text-red-600' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                    {appt.status.toUpperCase()}
+                  </span>
+                  <span className="text-slate-500 text-sm flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(appt.date).toLocaleDateString()} @ {appt.timeSlot}
+                  </span>
+                </div>
+                <h3 className="font-bold text-lg text-slate-900">
+                  {appt.venueName}
+                </h3>
+                <p className="text-sm text-slate-500 flex items-center gap-1 mt-1">
+                  <MapPin className="h-3 w-3" /> {appt.venueType === 'hospital' ? 'Hospital Visit' : 'Donation Camp'}
+                </p>
+              </div>
+
+              {appt.status === 'scheduled' && (
+                <button
+                  onClick={() => handleCancelAppointment(appt.id)}
+                  className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -712,5 +822,120 @@ function Heart({ className }) {
     >
       <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
     </svg>
+  );
+}
+
+function CertificateModal({ donorName, venueName, date, onClose }) {
+  const handleDownload = () => {
+    window.print();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 print:p-0 print:bg-white print:fixed print:inset-0">
+      <style>
+        {`
+                    @media print {
+                        body * {
+                            visibility: hidden;
+                        }
+                        #certificate-container, #certificate-container * {
+                            visibility: visible;
+                        }
+                        #certificate-container {
+                            position: absolute;
+                            left: 0;
+                            top: 0;
+                            width: 100%;
+                            height: 100%;
+                            margin: 0;
+                            padding: 0;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            background: white;
+                            border: none !important;
+                        }
+                        #certificate-content {
+                            border: 4px solid #0f172a !important; 
+                            width: 100%;
+                            max-width: 800px;
+                            margin: 20px;
+                        }
+                        .no-print {
+                            display: none !important;
+                        }
+                    }
+                `}
+      </style>
+
+      <div id="certificate-container" className="bg-white rounded-xl shadow-2xl w-full max-w-2xl relative animate-in zoom-in-95 border-8 border-double border-slate-200 p-2">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 z-10 no-print"
+        >
+          <X className="h-8 w-8" />
+        </button>
+
+        <div id="certificate-content" className="border-4 border-slate-900 p-8 md:p-12 text-center bg-slate-50 relative overflow-hidden">
+          {/* Decorative Elements */}
+          <div className="absolute top-0 left-0 w-32 h-32 border-t-4 border-l-4 border-brand-500 -mt-2 -ml-2"></div>
+          <div className="absolute bottom-0 right-0 w-32 h-32 border-b-4 border-r-4 border-brand-500 -mb-2 -mr-2"></div>
+          <div className="absolute top-0 right-0 w-32 h-32 border-t-4 border-r-4 border-brand-500 -mt-2 -mr-2"></div>
+          <div className="absolute bottom-0 left-0 w-32 h-32 border-b-4 border-l-4 border-brand-500 -mb-2 -ml-2"></div>
+
+          <div className="relative z-10">
+            <div className="flex justify-center mb-4 relative">
+              <Award className="h-20 w-20 text-brand-500" />
+              <BadgeCheck className="h-8 w-8 text-yellow-500 absolute -right-4 top-0 fill-yellow-100" />
+            </div>
+
+            <h1 className="text-4xl md:text-5xl font-serif font-bold text-slate-900 mb-2 uppercase tracking-wider">
+              Certificate
+            </h1>
+            <h2 className="text-xl md:text-2xl font-serif text-slate-600 mb-8 uppercase tracking-widest">
+              of Appreciation
+            </h2>
+
+            <p className="text-lg text-slate-600 mb-2">This certificate is proudly presented to</p>
+
+            <div className="text-3xl md:text-4xl font-cursive text-brand-600 mb-6 font-bold italic py-2 border-b-2 border-slate-300 inline-block px-8" style={{ fontFamily: "'Dancing Script', cursive" }}>
+              {donorName}
+            </div>
+
+            <p className="text-lg text-slate-600 mb-12 max-w-lg mx-auto leading-relaxed">
+              For your selfless act of kindness and generosity in donating blood at <strong>{venueName}</strong> on <strong>{new Date(date).toLocaleDateString()}</strong>. Your contribution has helped save lives.
+            </p>
+
+            <div className="flex flex-col sm:flex-row justify-between items-end gap-8 mt-auto w-full px-8">
+              <div className="text-left">
+                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Certificate ID</p>
+                <p className="font-mono text-sm text-slate-600">LF-{Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
+                <p className="text-xs text-slate-400 uppercase tracking-wider mt-2 mb-1">Date of Issue</p>
+                <p className="font-mono text-sm text-slate-600">{new Date().toLocaleDateString()}</p>
+              </div>
+
+              <div className="text-center">
+                <div className="mb-2">
+                  <div className="font-cursive text-2xl text-slate-800 transform -rotate-6" style={{ fontFamily: "'Dancing Script', cursive" }}>Dr. Sameer Kumar</div>
+                </div>
+                <div className="w-48 border-b border-slate-400 mb-2"></div>
+                <p className="text-xs font-bold uppercase text-slate-900 tracking-wider">Chief Medical Officer</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">RedLife Foundation</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 text-center no-print">
+          <button
+            onClick={handleDownload}
+            className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-md transition-colors flex items-center gap-2 mx-auto"
+          >
+            <Download className="h-4 w-4" />
+            Download Certificate
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
