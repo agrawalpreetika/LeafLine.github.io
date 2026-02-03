@@ -70,7 +70,7 @@ export const sendRequestAcceptedNotification = async (seekerId, donorDetails) =>
       donor_phone: donorDetails.phone || 'Not shared',
       blood_type: donorDetails.bloodType,
       next_steps: 'Please contact the donor immediately to coordinate the donation. Time is of the essence!',
-      action_link: `${window.location.origin}/search`
+      action_link: `${window.location.origin}`
     };
 
     const response = await emailjs.send(SERVICE_ID, ACCEPTANCE_TEMPLATE_ID, templateParams, PUBLIC_KEY);

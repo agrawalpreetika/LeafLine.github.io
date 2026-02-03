@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, MapPin, Filter, Phone, Droplet, AlertCircle, Bell, Trash2, Building, User, Navigation, Heart, CheckCircle, XCircle, Archive, Clock, Share2, Copy, X } from 'lucide-react';
-import { searchDonors, addToWatchlist, getWatchlist, subscribeToMatchingInventory, subscribeToAllInventory, requestBlood, subscribeToSentRequests, cancelRequest, archiveRequest, markRequestsFulfilled, getUserProfile } from '../lib/firestore';
+import { Search, MapPin, Filter, Phone, Droplet, AlertCircle, Bell, Trash2, Building, User, Navigation, Heart, CheckCircle, XCircle, Archive, Clock, Share2, Copy, X, Loader2 } from 'lucide-react';
+import { searchDonors, addToWatchlist, getWatchlist, deleteWatchlistItem, markWatchlistNotified, markWatchlistMatchFound, resetWatchlistMatch, subscribeToMatchingInventory, subscribeToAllInventory, subscribeToActiveDonors, requestBlood, subscribeToSentRequests, cancelRequest, archiveRequest, markRequestsFulfilled, getUserProfile } from '../lib/firestore';
 import { sendBloodRequestNotification } from '../lib/emailService';
 import { useAuth } from '../context/AuthContext';
 import { Toaster, toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import GlobalMap from '../components/GlobalMap';
+
 
 // Simple Haversine distance calculator
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -38,6 +39,7 @@ export default function SeekerDashboard() {
 
     // Data States
     const [donors, setDonors] = useState([]);
+    const [allActiveDonors, setAllActiveDonors] = useState([]); // Real-time all donors
     const [hospitals, setHospitals] = useState([]);
     const [userLocation, setUserLocation] = useState(null);
     const [selectedHospitalForShare, setSelectedHospitalForShare] = useState(null);
@@ -86,6 +88,15 @@ export default function SeekerDashboard() {
         return () => unsubscribe();
     }, []);
 
+    // Fetch Real-time Active Donors :Preetika
+    useEffect(() => {
+        const unsubscribe = subscribeToActiveDonors((data) => {
+            setAllActiveDonors(data);
+        });
+        return () => unsubscribe();
+    }, []);
+
+
     const loadWatchlist = useCallback(async () => {
         if (!currentUser) return;
         try {
@@ -120,29 +131,100 @@ export default function SeekerDashboard() {
         return () => unsubscribe();
     }, [currentUser]);
 
-    // Subscribe to matching inventory for notifications
+    // Sound notification helper
+    const playNotificationSound = () => {
+        try {
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.play().catch(e => console.log("Audio play failed (interaction required):", e));
+        } catch (error) {
+            console.error("Error playing sound:", error);
+        }
+    };
+
+    // Watchlist Sync Effect: Calculates matches locally and updates Firestore state
     useEffect(() => {
         if (!currentUser || watchlist.length === 0) return;
-        const watchedTypes = [...new Set(watchlist.map(item => item.bloodType))];
-        const unsubscribe = subscribeToMatchingInventory(watchedTypes, (newItem) => {
-            const match = watchlist.find(w =>
-                w.bloodType === newItem.bloodType &&
-                (!w.location || (newItem.location && newItem.location.toLowerCase().includes(w.location.toLowerCase())))
-            );
+        watchlist.forEach(async (item) => {
+            let isMatch = false;
 
-            if (match) {
-                if (Notification.permission === 'granted') {
-                    new Notification('Blood Type Match Found!', {
-                        body: `${newItem.bloodType} blood is now available in ${newItem.location}.`,
-                        icon: '/vite.svg'
+            // 1. Check Hospitals
+            const hospitalMatch = hospitals.find(h => {
+                const hasStock = h.bloodStock && h.bloodStock[item.bloodType] > 0;
+                const matchesLoc = !item.location || (h.address && h.address.toLowerCase().includes(item.location.toLowerCase())) || (h.hospitalName && h.hospitalName.toLowerCase().includes(item.location.toLowerCase()));
+                return hasStock && matchesLoc;
+            });
+
+            // 2. Check Donors
+            const donorMatch = allActiveDonors.find(d => {
+                const isType = d.donorProfile && d.donorProfile.bloodType === item.bloodType;
+                const matchesLoc = !item.location || (d.donorProfile.city && d.donorProfile.city.toLowerCase().includes(item.location.toLowerCase()));
+                return isType && matchesLoc;
+            });
+
+            if (hospitalMatch || donorMatch) {
+                isMatch = true;
+            }
+
+            // State Transition Logic
+            if (isMatch) {
+                // If found match but item says not found -> Update Found
+                if (!item.matchFound) {
+                    await markWatchlistMatchFound(item.id);
+                    loadWatchlist(); // Refresh UI
+                }
+
+                // If found match but hasn't notified -> Notify
+                if (!item.hasNotified) {
+                    playNotificationSound();
+
+                    if (Notification.permission === 'granted') {
+                        new Notification('Blood Type Match Found!', {
+                            body: `${item.bloodType} blood is now available in ${item.location || 'your area'}.`,
+                            icon: '/vite.svg'
+                        });
+                    } else if (Notification.permission !== 'denied') {
+                        Notification.requestPermission().then(permission => {
+                            if (permission === 'granted') {
+                                new Notification('Blood Type Match Found!', {
+                                    body: `${item.bloodType} blood is now available.`,
+                                    icon: '/vite.svg'
+                                });
+                            }
+                        });
+                    }
+
+                    toast.success(`Match Found: ${item.bloodType} is available!`, {
+                        duration: 8000,
+                        icon: '🩸'
                     });
-                } else {
-                    alert(`New Match: ${newItem.bloodType} available in ${newItem.location}!`);
+
+                    await markWatchlistNotified(item.id);
+                    loadWatchlist();
+                }
+            } else {
+                // NO Match Found
+                // If it WAS found or notified previously, we need to RESET so we can notify again later
+                if (item.matchFound || item.hasNotified) {
+                    await resetWatchlistMatch(item.id);
+                    loadWatchlist();
                 }
             }
         });
-        return () => unsubscribe();
-    }, [currentUser, watchlist]);
+
+    }, [currentUser, watchlist, hospitals, allActiveDonors, loadWatchlist]);
+
+    const handleDeleteWatchlistItem = async (itemId) => {
+        if (!window.confirm("Remove this alert from your watchlist?")) return;
+        try {
+            await deleteWatchlistItem(itemId);
+            toast.success("Alert removed");
+            loadWatchlist();
+        } catch (error) {
+            console.error("Error deleting watchlist item:", error);
+            toast.error("Failed to remove alert");
+        }
+    };
+
 
     const handleCancelRequest = async (requestId) => {
         if (!window.confirm("Are you sure you want to cancel this request?")) return;
@@ -219,10 +301,13 @@ export default function SeekerDashboard() {
         try {
             await addToWatchlist(currentUser.uid, bloodType, location);
             await loadWatchlist();
-            alert(`You will be notified when ${bloodType} becomes available${location ? ` in ${location}` : ''}.`);
+            toast.success('Added to watchlist. We will alert you when a donor is found!', {
+                icon: '🔔',
+                duration: 10000
+            });
         } catch (error) {
             console.error("Error adding to watchlist:", error);
-            alert("Failed to add to watchlist. Please try again.");
+            toast.error("Failed to add to watchlist. Please try again.", { duration: 10000 });
         }
         setAddingToWatchlist(false);
     };
@@ -247,13 +332,13 @@ export default function SeekerDashboard() {
 
             // Send email notification using registered location
             const registeredLocation = seekerProfile?.donorProfile?.city || seekerProfile?.address || seekerProfile?.city || location || 'Unknown Location';
-            
+
             await sendBloodRequestNotification([donor], {
                 bloodType: bloodType || donor.donorProfile.bloodType || 'Any',
                 location: registeredLocation,
                 seekerName: currentUser.displayName || currentUser.email.split('@')[0],
                 urgency: 'High',
-                link: `${window.location.origin}/dashboard`
+                link: `${window.location.origin}`
             });
 
             toast.success(`Request sent to ${donor.name || donor.email.split('@')[0]}!`, { id: loadingToast });
@@ -289,6 +374,16 @@ export default function SeekerDashboard() {
         setSelectedHospitalForShare(hospital);
     };
 
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text).then(() => {
+            toast.success("Details copied to clipboard!");
+            setSelectedHospitalForShare(null);
+        }).catch((err) => {
+            console.error('Failed to copy: ', err);
+            toast.error("Failed to copy details.");
+        });
+    };
+
     const handleBroadcastNotification = async () => {
         if (donors.length === 0) return;
         if (!currentUser) {
@@ -309,7 +404,7 @@ export default function SeekerDashboard() {
         try {
             // 1. Create database requests for each donor
             // We handle individual failures so one bad request doesn't stop the whole batch
-            const requestPromises = donors.map(donor => 
+            const requestPromises = donors.map(donor =>
                 requestBlood(
                     currentUser.uid,
                     seekerName,
@@ -318,7 +413,7 @@ export default function SeekerDashboard() {
                     donor.name || donor.email.split('@')[0]
                 ).catch(err => {
                     console.error(`Failed to request blood from donor ${donor.id}:`, err);
-                    return null; 
+                    return null;
                 })
             );
 
@@ -328,7 +423,7 @@ export default function SeekerDashboard() {
                 location: registeredLocation,
                 seekerName: seekerName,
                 urgency: 'High',
-                link: window.location.origin + '/dashboard'
+                link: window.location.origin
             });
 
             // Execute all operations
@@ -341,20 +436,12 @@ export default function SeekerDashboard() {
         }
     };
 
-    const copyToClipboard = (text) => {
-        navigator.clipboard.writeText(text).then(() => {
-            toast.success("Details copied to clipboard!");
-            setSelectedHospitalForShare(null);
-        }).catch((err) => {
-            console.error('Failed to copy: ', err);
-            toast.error("Failed to copy details.");
-        });
-    };
+
 
     return (
         <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
             <Toaster position="top-center" />
-            
+
             {/* Share Details Modal */}
             {selectedHospitalForShare && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -362,14 +449,14 @@ export default function SeekerDashboard() {
                         <div className="p-6">
                             <div className="flex justify-between items-start mb-4">
                                 <h3 className="text-xl font-bold text-slate-900">Hospital Details</h3>
-                                <button 
+                                <button
                                     onClick={() => setSelectedHospitalForShare(null)}
                                     className="text-slate-400 hover:text-slate-600 transition-colors"
                                 >
                                     <X className="h-6 w-6" />
                                 </button>
                             </div>
-                            
+
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
                                 <p className="font-bold text-lg text-slate-900 mb-2">{selectedHospitalForShare.hospitalName}</p>
                                 <div className="space-y-2 text-sm text-slate-600">
@@ -411,6 +498,62 @@ export default function SeekerDashboard() {
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-bold text-slate-900">Find Blood & Donors</h1>
                     <p className="mt-2 text-slate-600">Locate nearby hospitals or connect with individual donors.</p>
+                </div>
+
+                {/* Watchlist Section */}
+                <div className="mb-8 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                            <Bell className="h-5 w-5 text-yellow-500" />
+                            Your Blood Watchlist
+                        </h2>
+                        <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-full">
+                            {watchlist.length} Alerts
+                        </span>
+                    </div>
+
+                    <div className="p-6">
+                        {watchlist.length === 0 ? (
+                            <div className="text-center py-8 border-2 border-dashed border-slate-100 rounded-xl">
+                                <Bell className="h-10 w-10 text-slate-200 mx-auto mb-3" />
+                                <p className="text-slate-500 font-medium">You are not watching any blood types.</p>
+                                <p className="text-sm text-slate-400 mt-1">Add one using the filter below to get notified!</p>
+                            </div>
+                        ) : (
+                            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                {watchlist.map(item => (
+                                    <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-yellow-200 transition-colors group">
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-10 w-10 rounded-full bg-white border border-slate-200 flex items-center justify-center font-bold text-red-600 shadow-sm">
+                                                {item.bloodType}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-slate-900 text-sm">{item.location || 'Any Location'}</p>
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                    {item.matchFound ? (
+                                                        <span className="text-[10px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                                            <CheckCircle className="h-3 w-3" /> Available!
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                                            <Loader2 className="h-3 w-3 animate-spin" /> Searching...
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteWatchlistItem(item.id)}
+                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                            title="Remove Alert"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Sent Requests Section */}
@@ -605,7 +748,7 @@ export default function SeekerDashboard() {
                                     </>
                                 )}
                             </button>
-                            <button
+                            {/* <button
                                 onClick={handleNotifyMe}
                                 disabled={addingToWatchlist}
                                 className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
@@ -613,7 +756,19 @@ export default function SeekerDashboard() {
                             >
                                 <Bell className="h-5 w-5" />
                                 Notify Me
-                            </button>
+                            </button> */}
+                            {/* Notify Button - Only visible if no donors found */}
+                            {hasSearched && donors.length === 0 && activeTab === 'donors' && (
+                                <button
+                                    onClick={handleNotifyMe}
+                                    disabled={addingToWatchlist}
+                                    className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+                                    title="Notify me when this blood type becomes available"
+                                >
+                                    <Bell className="h-5 w-5" />
+                                    Notify Me
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -692,7 +847,7 @@ export default function SeekerDashboard() {
                                                     <span>No Phone</span>
                                                 </button>
                                             )}
-                                            
+
                                             <button
                                                 onClick={() => handleShareDetails(hospital)}
                                                 className="col-span-2 lg:col-span-1 flex-1 px-3 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs sm:text-sm font-bold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-2"
@@ -751,7 +906,7 @@ export default function SeekerDashboard() {
                                         <div className="flex items-center text-slate-500 text-sm mt-1 gap-4">
                                             <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {donor.donorProfile.city}</span>
                                             {/* Mock Distance for now as donor location isn't lat/lng yet */}
-                                            <span className="flex items-center gap-1 text-slate-400"><Navigation className="h-3 w-3" /> ~5km away</span>
+                                            <span className="flex items-center gap-1 text-slate-400"><Navigation className="h-3 w-3" /> Nearby in {donor.donorProfile.city}</span>
                                         </div>
                                     </div>
                                 </div>

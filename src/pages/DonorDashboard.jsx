@@ -89,7 +89,7 @@ export default function DonorDashboard() {
 
   useEffect(() => {
     let unsubscribe;
-    
+
     async function fetchProfile() {
       if (currentUser) {
         // Initial fetch to show something quickly (optional, but good for perceived speed)
@@ -103,7 +103,7 @@ export default function DonorDashboard() {
       }
     }
     fetchProfile();
-    
+
     return () => {
       if (unsubscribe) unsubscribe();
     };
@@ -196,15 +196,15 @@ export default function DonorDashboard() {
 
       if (status === 'accepted') {
         toast.success(`Request accepted! Seeker will be notified.`);
-        
+
         // Find the request to get Seeker ID
         const request = bloodRequests.find(r => r.id === requestId);
         if (request && request.seekerId) {
-             sendRequestAcceptedNotification(request.seekerId, {
-                name: profile.name || 'A Donor',
-                phone: donorPhone,
-                bloodType: profile.donorProfile?.bloodType || 'Unknown'
-             });
+          sendRequestAcceptedNotification(request.seekerId, {
+            name: profile.name || 'A Donor',
+            phone: donorPhone,
+            bloodType: profile.donorProfile?.bloodType || 'Unknown'
+          });
         }
       } else {
         toast.success(`Request rejected.`);
@@ -239,6 +239,29 @@ export default function DonorDashboard() {
     setProfile(data);
   };
 
+  const getGoogleCalendarUrl = (booking) => {
+    // Format the date for Google (Removes dashes from 2026-02-03 to 20260203)
+    const cleanDate = booking.date.replace(/-/g, '');
+
+    // Create a start time (Assume 10:00 AM if somehow missing)
+    const timeStr = booking.timeSlot.split(' ')[0].replace(':', '') + '00';
+    const isPM = booking.timeSlot.includes('PM');
+
+    // Simple hour adjustment for PM
+    let startTime = timeStr.padStart(6, '0');
+    if (isPM && !startTime.startsWith('12')) {
+      startTime = (parseInt(startTime.substring(0, 2)) + 12).toString() + startTime.substring(2);
+    }
+
+    const title = encodeURIComponent(`🩸 Blood Donation: ${booking.venueName}`);
+    const details = encodeURIComponent(`Appointment at ${booking.venueName}. Thank you for saving lives with RedLife!`);
+    const location = encodeURIComponent(booking.venueName); // You can add city here if available
+    const dates = `${cleanDate}T${startTime}/${cleanDate}T${parseInt(startTime.substring(0, 2)) + 1}${startTime.substring(2)}`;
+
+    return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
+  };
+
+
   const handleBookAppointment = async (e) => {
     e.preventDefault();
     if (!bookingData.venueId || !bookingData.date || !bookingData.timeSlot) {
@@ -254,7 +277,40 @@ export default function DonorDashboard() {
         ...bookingData
       });
 
-      toast.success("Appointment Scheduled Successfully!");
+      // --- ADD THIS MAGIC PART ---
+      const calendarUrl = getGoogleCalendarUrl(bookingData);
+
+      toast.success((t) => (
+        <div className="flex flex-col gap-3 min-w-[250px]">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-800">Appointment Scheduled!</span>
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-slate-100 pt-2">
+            <p className="text-xs text-slate-500 italic">Don't forget to save it to your schedule:</p>
+            <a
+              href={getGoogleCalendarUrl(bookingData)}
+              target="_blank"
+              onClick={() => toast.dismiss(t.id)}
+              className="flex items-center justify-center gap-2 bg-slate-900 text-white text-xs font-bold py-2 px-4 rounded-lg hover:bg-red-600 transition-all shadow-sm active:scale-95"
+            >
+              <Calendar size={14} className="text-red-400" />
+              Add to Google Calendar
+            </a>
+          </div>
+        </div>
+      ), {
+        duration: 6000,
+        icon: '🎉',
+        style: {
+          borderRadius: '16px',
+          background: '#ffffff',
+          color: '#334155',
+          padding: '16px',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+        }
+      });
+      
       setShowAppointmentModal(false);
 
       // Refresh list
@@ -380,7 +436,7 @@ export default function DonorDashboard() {
                           <div>
                             <h4 className="font-bold text-slate-900 text-sm">{v.name}</h4>
                             <p className="text-xs text-slate-500 mt-0.5">
-                              {typeof v.address === 'string' ? v.address : 'View Map for Location'}
+                              {typeof v.address === 'string' ? v.address : 'See Camp Page'}
                             </p>
                           </div>
                           {v.distance && (
@@ -661,7 +717,7 @@ export default function DonorDashboard() {
                 iconBg="bg-blue-500"
                 label="Total Donations"
                 value={profile.donorProfile.totalDonations}
-                subtext="Lives Saved: ~0"
+                subtext={`Lives Saved: ~${profile.donorProfile.totalDonations * 3}`}
               />
               <StatCard
                 icon={<Clock className="h-6 w-6 text-white" />}
