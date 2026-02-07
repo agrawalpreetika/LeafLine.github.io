@@ -55,19 +55,37 @@ function SearchField({ setLocation, setAddress }) {
   return null;
 }
 
-function LocationMarker({ position, setPosition }) {
+function LocationMarker({ position, setPosition, setAddress }) {
+  const map = useMap();
+
   useMapEvents({
     click(e) {
-      setPosition(e.latlng);
+      const { lat, lng } = e.latlng;
+      setPosition({ lat, lng });
+      fetchAddress(lat, lng);
     },
   });
+
+  const fetchAddress = async (lat, lng) => {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const data = await response.json();
+      if (data && data.display_name) {
+        setAddress(data.display_name);
+      }
+    } catch (error) {
+      console.error("Error fetching address:", error);
+    }
+  };
 
   // Make marker draggable
   const eventHandlers = {
     dragend(e) {
       const marker = e.target;
       if (marker != null) {
-        setPosition(marker.getLatLng());
+        const { lat, lng } = marker.getLatLng();
+        setPosition({ lat, lng });
+        fetchAddress(lat, lng);
       }
     },
   };
@@ -278,7 +296,7 @@ export default function HospitalSignup() {
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
                     <SearchField setLocation={setLocation} setAddress={setAddress} />
-                    <LocationMarker position={location} setPosition={setLocation} />
+                    <LocationMarker position={location} setPosition={setLocation} setAddress={setAddress} />
                   </MapContainer>
                   {!location && (
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white/90 px-3 py-1 rounded-full text-xs font-medium text-slate-600 shadow-sm pointer-events-none z-[1000]">
