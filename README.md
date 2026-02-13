@@ -2,7 +2,7 @@
 
 ![WhatsApp Image 2026-02-07 at 21 29 43](https://github.com/user-attachments/assets/efd3fd2a-b2f0-4eeb-975e-a63ab45e45cf)
 
-<p align="center" style="font-size: 32px; font-weight: 3px;">
+<p align="center" style="font-size: 32px; font-weight: 3px; color: red 70">
  <b> Once a Blood-Donor, always a HERO! </b>
 </p>
 
