@@ -66,7 +66,7 @@ This project enhances healthcare accessibility by connecting hospitals, organiza
 
 - **Preetika Agrawal** - [GitHub](https://github.com/agrawalpreetika)
 - **Nikki Gautam** - [GitHub](https://github.com/nix-per)
-- **Neha** - [GitHub]()
+- **Neha** - [GitHub](https://github.com/nehaa281)
 
 ## Feedback
 
